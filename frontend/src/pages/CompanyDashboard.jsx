@@ -4,7 +4,8 @@ import {
   Briefcase, Users, Bell, CheckCircle, TrendingUp, DollarSign,
   Plus, Edit2, Trash2, LogOut, ArrowRight, Star, CreditCard,
   ChevronRight, Zap, FileText, ExternalLink, Clock, XCircle,
-  RefreshCw, Mail, MapPin, Building2, Globe, Save, Link
+  RefreshCw, Mail, MapPin, Building2, Globe, Save, Link, Phone,
+  Shield, X
 } from 'lucide-react';
 import { PostJobForm } from '../components/PostJobForm';
 import { glowHover, buttonHover, fadeInUp, staggerContainer } from '../utils/animations';
@@ -13,11 +14,17 @@ import { api } from '../utils/api';
 export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs }) => {
   const [activeTab, setActiveTab] = useState('jobs');
   const [showPostForm, setShowPostForm] = useState(false);
+  const [editingJob, setEditingJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [applicantsLoading, setApplicantsLoading] = useState(false);
   const [applicantsError, setApplicantsError] = useState(null);
   const [statusUpdating, setStatusUpdating] = useState(null); // applicationId being updated
   const [filterJobId, setFilterJobId] = useState(null); // filter talent pool by job
+
+  // Custom evaluation modal states
+  const [selectedCandidateApp, setSelectedCandidateApp] = useState(null);
+  const [recruiterNotesInput, setRecruiterNotesInput] = useState('');
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
 
   // Company Profile form state
   const [companyForm, setCompanyForm] = useState({
@@ -112,14 +119,16 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
     }
   };
 
-  const handleStatusUpdate = async (applicationId, newStatus) => {
+  const handleStatusUpdate = async (applicationId, newStatus, notes = '', reason = '') => {
     setStatusUpdating(applicationId);
     try {
-      const res = await api.applications.updateStatus(applicationId, newStatus);
+      const res = await api.applications.updateStatus(applicationId, newStatus, notes, reason);
       if (res.success) {
         setApplicants(prev =>
           prev.map(app =>
-            app._id === applicationId ? { ...app, status: newStatus } : app
+            app._id === applicationId 
+              ? { ...app, status: newStatus, recruiterNotes: notes, rejectionReason: reason } 
+              : app
           )
         );
       }
@@ -177,7 +186,36 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
     }
   };
 
+  const handleUpdateJob = async (jobId, updatedJobData) => {
+    try {
+      await api.jobs.update(jobId, updatedJobData);
+      // Reload jobs list from MongoDB to trigger immediate state propagation
+      const allJobs = await api.jobs.getAll();
+      setJobs(allJobs);
+      setEditingJob(null);
+      setShowPostForm(false);
+    } catch (err) {
+      console.error('Job Updating Error:', err);
+      alert(err.message || 'Failed to update job listing.');
+      throw err;
+    }
+  };
+
+  const handleDeleteJob = async (jobId) => {
+    if (!window.confirm('Are you sure you want to delete this job requisition?')) return;
+    try {
+      await api.jobs.delete(jobId);
+      // Reload jobs list from MongoDB to trigger immediate state propagation
+      const allJobs = await api.jobs.getAll();
+      setJobs(allJobs);
+    } catch (err) {
+      console.error('Job Deleting Error:', err);
+      alert(err.message || 'Failed to delete job listing.');
+    }
+  };
+
   const companyJobs = jobs.filter(j =>
+    (j.recruiter && (typeof j.recruiter === 'object' ? j.recruiter._id === user._id : j.recruiter === user._id)) ||
     j.company.toLowerCase() === user.name.toLowerCase() ||
     (user.company && typeof user.company === 'object' && j.company.toLowerCase() === user.company.name?.toLowerCase()) ||
     (user.company && typeof user.company === 'string' && j.company.toLowerCase() === user.company.toLowerCase())
@@ -371,7 +409,15 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
 
                   {/* Redesigned interactive post form inside panel */}
                   {showPostForm && (
-                    <PostJobForm setShowPostForm={setShowPostForm} onAddJob={handleAddJob} />
+                    <PostJobForm
+                      setShowPostForm={(val) => {
+                        setShowPostForm(val);
+                        if (!val) setEditingJob(null);
+                      }}
+                      onAddJob={handleAddJob}
+                      editingJob={editingJob}
+                      onUpdateJob={handleUpdateJob}
+                    />
                   )}
 
                   <div className="space-y-4">
@@ -410,10 +456,19 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
 
                               {/* Requisition Action Controls */}
                               <div className="flex gap-1.5 bg-slate-50/50 p-1.5 rounded-xl border border-slate-100">
-                                <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition duration-200">
+                                <button
+                                  onClick={() => {
+                                    setEditingJob(job);
+                                    setShowPostForm(true);
+                                  }}
+                                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-white rounded-lg transition duration-200"
+                                >
                                   <Edit2 className="w-4 h-4" />
                                 </button>
-                                <button className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-lg transition duration-200">
+                                <button
+                                  onClick={() => handleDeleteJob(job.id || job._id)}
+                                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-white rounded-lg transition duration-200"
+                                >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
@@ -554,10 +609,34 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
                               {/* Candidate info */}
                               <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                                  <h3 className="font-bold text-slate-800 text-base truncate">{candidate.name || 'Unknown Candidate'}</h3>
+                                  <h3 
+                                    onClick={() => {
+                                      setSelectedCandidateApp(application);
+                                      setRecruiterNotesInput(application.recruiterNotes || '');
+                                      setRejectionReasonInput(application.rejectionReason || '');
+                                    }}
+                                    className="font-bold text-slate-800 text-base truncate cursor-pointer hover:text-blue-600 transition"
+                                  >
+                                    {candidate.name || 'Unknown Candidate'}
+                                  </h3>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedCandidateApp(application);
+                                      setRecruiterNotesInput(application.recruiterNotes || '');
+                                      setRejectionReasonInput(application.rejectionReason || '');
+                                    }}
+                                    className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-0.5 ml-2"
+                                  >
+                                    Review Profile →
+                                  </button>
                                   <span className={`px-2 py-0.5 border rounded-md text-[10px] font-bold ${statusStyle.bg}`}>
                                     {statusStyle.label}
                                   </span>
+                                  {candidate.experience !== undefined && (
+                                    <span className="px-2 py-0.5 bg-blue-500/10 text-blue-700 border border-blue-500/10 rounded-md text-[10px] font-extrabold uppercase tracking-wider">
+                                      {candidate.experience} Years Exp
+                                    </span>
+                                  )}
                                 </div>
 
                                 <p className="text-slate-500 text-xs font-medium mb-2">
@@ -568,24 +647,38 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
                                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
                                   {candidate.email && (
                                     <span className="flex items-center gap-1">
-                                      <Mail className="w-3 h-3" />
+                                      <Mail className="w-3 h-3 text-slate-400" />
                                       <a href={`mailto:${candidate.email}`} className="hover:text-blue-600 transition">
                                         {candidate.email}
                                       </a>
                                     </span>
                                   )}
+                                  {candidate.phone && (
+                                    <span className="flex items-center gap-1">
+                                      <Phone className="w-3 h-3 text-slate-400" />
+                                      <a href={`tel:${candidate.phone}`} className="hover:text-blue-600 transition">
+                                        {candidate.phone}
+                                      </a>
+                                    </span>
+                                  )}
                                   {candidate.location && (
                                     <span className="flex items-center gap-1">
-                                      <MapPin className="w-3 h-3" /> {candidate.location}
+                                      <MapPin className="w-3 h-3 text-slate-400" /> {candidate.location}
                                     </span>
                                   )}
                                   <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
+                                    <Clock className="w-3 h-3 text-slate-400" />
                                     Applied {application.appliedAt
                                       ? new Date(application.appliedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
                                       : 'Recently'}
                                   </span>
                                 </div>
+
+                                {candidate.bio && (
+                                  <p className="mt-3 text-slate-600 text-xs leading-relaxed bg-slate-50/50 p-3 rounded-xl border border-slate-100/60 font-medium">
+                                    {candidate.bio}
+                                  </p>
+                                )}
 
                                 {/* Skills */}
                                 {candidate.skills && candidate.skills.length > 0 && (
@@ -684,7 +777,10 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
               )}
 
               {/* ─── COMPANY PROFILE EDITOR ─── */}
-              {activeTab === 'profile' && (
+              {activeTab === 'profile' && (() => {
+                const labelCls = 'block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 pl-1';
+                const inputCls = 'w-full px-4 py-3 bg-white/60 border border-slate-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none rounded-xl text-sm font-semibold text-slate-800 transition-all duration-300';
+                return (
                 <motion.div
                   key="profile-tab"
                   initial={{ opacity: 0, y: 15 }}
@@ -858,7 +954,9 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
                     </div>
                   )}
                 </motion.div>
-              )}
+                );
+              })()}
+
 
               {/* ─── CONSOLE ANALYTICS SECTION ─── */}
               {activeTab === 'analytics' && (
@@ -983,6 +1081,225 @@ export const CompanyDashboard = ({ user, setCurrentPage, setUser, jobs, setJobs 
         </div>
 
       </div>
+
+      {/* Ultra-Premium Glassmorphic Candidate Profile Review Modal */}
+      <AnimatePresence>
+        {selectedCandidateApp && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+            onClick={() => setSelectedCandidateApp(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 30, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 30, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 250 }}
+              className="bg-white/95 border border-slate-200/80 rounded-[36px] shadow-2xl shadow-slate-900/10 max-w-2xl w-full max-h-[85vh] overflow-y-auto relative overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Dynamic top gradient bar */}
+              <div className="absolute top-0 left-0 right-0 h-[5px] bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500" />
+              
+              {/* Close Button */}
+              <button
+                onClick={() => setSelectedCandidateApp(null)}
+                className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="p-8 sm:p-10 space-y-6">
+                {/* Header Information */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 pb-6 border-b border-slate-100">
+                  <div className={`w-16 h-16 rounded-[22px] bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black text-xl shadow-lg`}>
+                    {selectedCandidateApp.candidate?.name ? selectedCandidateApp.candidate.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2) : '?'}
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                      <h2 className="text-2xl font-black text-slate-800 tracking-tight">{selectedCandidateApp.candidate?.name || 'Unknown Candidate'}</h2>
+                      <span className={`px-2.5 py-0.5 border rounded-md text-[10px] font-bold ${statusConfig[selectedCandidateApp.status]?.bg || statusConfig.pending.bg}`}>
+                        {statusConfig[selectedCandidateApp.status]?.label || 'Pending'}
+                      </span>
+                    </div>
+                    
+                    <p className="text-slate-500 text-sm font-semibold flex items-center gap-1.5">
+                      Applied for: <span className="text-slate-800 font-extrabold">{selectedCandidateApp.job?.title || 'Unknown Role'}</span>
+                      {selectedCandidateApp.candidate?.experience !== undefined && (
+                        <span className="px-2 py-0.5 bg-blue-500/10 text-blue-700 border border-blue-500/10 rounded-md text-[10px] font-black uppercase tracking-wider">
+                          {selectedCandidateApp.candidate.experience} Years Exp
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Grid stats */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 bg-slate-50/50 border border-slate-100/60 rounded-2xl flex items-center gap-3">
+                    <Mail className="w-4 h-4 text-slate-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Email Address</p>
+                      <a href={`mailto:${selectedCandidateApp.candidate?.email}`} className="text-sm font-bold text-slate-700 hover:text-blue-600 transition">
+                        {selectedCandidateApp.candidate?.email || 'N/A'}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-50/50 border border-slate-100/60 rounded-2xl flex items-center gap-3">
+                    <Phone className="w-4 h-4 text-slate-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Phone Number</p>
+                      <a href={`tel:${selectedCandidateApp.candidate?.phone}`} className="text-sm font-bold text-slate-700 hover:text-blue-600 transition">
+                        {selectedCandidateApp.candidate?.phone || 'N/A'}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-50/50 border border-slate-100/60 rounded-2xl flex items-center gap-3">
+                    <MapPin className="w-4 h-4 text-slate-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Location</p>
+                      <p className="text-sm font-bold text-slate-700">{selectedCandidateApp.candidate?.location || 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-50/50 border border-slate-100/60 rounded-2xl flex items-center gap-3">
+                    <FileText className="w-4 h-4 text-slate-400" />
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Resume Document</p>
+                      {selectedCandidateApp.candidate?.resume ? (
+                        <a href={selectedCandidateApp.candidate.resume} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-600 hover:text-blue-700 transition flex items-center gap-1">
+                          View CV Vault <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <p className="text-sm font-bold text-slate-400 italic">No resume uploaded</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Candidate Bio */}
+                <div>
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 pl-1">Professional Bio</h4>
+                  <p className="text-slate-600 text-sm leading-relaxed bg-slate-50/60 p-4 rounded-2xl border border-slate-100 font-medium whitespace-pre-line">
+                    {selectedCandidateApp.candidate?.bio || 'No candidate bio provided.'}
+                  </p>
+                </div>
+
+                {/* Candidate Skills */}
+                <div>
+                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5 pl-1">Competencies & Tech Stack</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedCandidateApp.candidate?.skills && selectedCandidateApp.candidate.skills.length > 0 ? (
+                      selectedCandidateApp.candidate.skills.map((skill, i) => (
+                        <span key={i} className="px-3.5 py-1.5 bg-gradient-to-r from-blue-500/5 to-indigo-500/5 border border-blue-500/10 text-slate-800 text-xs font-bold rounded-xl">
+                          {skill}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-400 italic pl-1">No skills listed</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Recruiter Evaluation Board */}
+                <div className="border-t border-slate-100 pt-6">
+                  <h3 className="text-base font-black text-slate-800 mb-4 flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-indigo-500" /> Recruiter Evaluation Board
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    {selectedCandidateApp.status === 'rejected' ? (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 pl-1">Rejection Reason Feedback</label>
+                          <textarea
+                            value={rejectionReasonInput}
+                            onChange={(e) => setRejectionReasonInput(e.target.value)}
+                            placeholder="Provide constructive feedback for the candidate (e.g. Needs more system design experience)..."
+                            rows="2"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 outline-none rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 resize-none focus:bg-white focus:border-red-500 focus:ring-4 focus:ring-red-50"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              await handleStatusUpdate(selectedCandidateApp._id, 'rejected', '', rejectionReasonInput);
+                              setSelectedCandidateApp(prev => ({ ...prev, status: 'rejected', rejectionReason: rejectionReasonInput }));
+                              alert('Rejection feedback notes updated.');
+                            }}
+                            className="px-4 py-2 bg-red-600 text-white font-bold text-xs rounded-xl hover:bg-red-700 transition"
+                          >
+                            Update Reason
+                          </button>
+                          <button
+                            onClick={() => setSelectedCandidateApp(prev => ({ ...prev, status: 'pending' }))}
+                            className="px-4 py-2 border border-slate-200 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-50 transition"
+                          >
+                            Re-evaluate Status
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 pl-1">Recruiter Notes / Interview Criteria</label>
+                          <textarea
+                            value={recruiterNotesInput}
+                            onChange={(e) => setRecruiterNotesInput(e.target.value)}
+                            placeholder="Add evaluation comments, interview logistics, or notes for shortlisting..."
+                            rows="2"
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 outline-none rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 resize-none focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                          />
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 pt-1.5">
+                          {selectedCandidateApp.status !== 'shortlisted' && selectedCandidateApp.status !== 'accepted' && (
+                            <button
+                              onClick={async () => {
+                                await handleStatusUpdate(selectedCandidateApp._id, 'shortlisted', recruiterNotesInput);
+                                setSelectedCandidateApp(prev => ({ ...prev, status: 'shortlisted', recruiterNotes: recruiterNotesInput }));
+                                alert('Candidate successfully shortlisted!');
+                              }}
+                              className="px-4 py-2.5 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-700 transition flex items-center gap-1.5"
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" /> Shortlist Candidate
+                            </button>
+                          )}
+                          {selectedCandidateApp.status === 'shortlisted' && (
+                            <button
+                              onClick={async () => {
+                                await handleStatusUpdate(selectedCandidateApp._id, 'accepted', recruiterNotesInput);
+                                setSelectedCandidateApp(prev => ({ ...prev, status: 'accepted', recruiterNotes: recruiterNotesInput }));
+                                alert('Offer extended successfully!');
+                              }}
+                              className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-xs rounded-xl hover:opacity-90 transition flex items-center gap-1.5"
+                            >
+                              <Star className="w-3.5 h-3.5" /> Extend Offer
+                            </button>
+                          )}
+                          <button
+                            onClick={async () => {
+                              setSelectedCandidateApp(prev => ({ ...prev, status: 'rejected' }));
+                            }}
+                            className="px-4 py-2.5 border border-red-200 text-red-500 font-bold text-xs rounded-xl hover:bg-red-50 transition flex items-center gap-1.5"
+                          >
+                            <XCircle className="w-3.5 h-3.5" /> Reject Application
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

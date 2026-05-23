@@ -11,7 +11,7 @@ import connectDB from './config/database.js';
 import { errorHandler, asyncHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/authRoutes.js';
 import jobRoutes from './routes/jobRoutes.js';
-import { userRoutes, applicationRoutes, companyRoutes, adminRoutes } from './routes/allRoutes.js';
+import { userRoutes, applicationRoutes, companyRoutes, adminRoutes, notificationRoutes } from './routes/allRoutes.js';
 
 dotenv.config();
 
@@ -55,6 +55,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/applications', applicationRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/admin', adminRoutes);
 

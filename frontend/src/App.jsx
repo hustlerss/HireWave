@@ -56,11 +56,20 @@ export default function App() {
       <LandingPage key="home" setCurrentPage={setCurrentPage} setUser={setUser} jobs={jobs} user={user} />
       )}
       {currentPage === 'login' && (
-        user ? <LandingPage key="home" setCurrentPage={setCurrentPage} setUser={setUser} jobs={jobs} user={user} /> :
+        // Already logged-in → send to their dashboard based on role
+        user ? (
+          user.role === 'company' ?
+            <CompanyDashboard key="dashboard" user={user} setCurrentPage={setCurrentPage} setUser={setUser} jobs={jobs} setJobs={setJobs} /> :
+            <UserDashboard key="dashboard" user={user} setCurrentPage={setCurrentPage} setUser={setUser} />
+        ) :
         <AuthPage key="login" currentPage={currentPage} setCurrentPage={setCurrentPage} setUser={setUser} />
       )}
       {currentPage === 'register' && (
-        user ? <LandingPage key="home" setCurrentPage={setCurrentPage} setUser={setUser} jobs={jobs} user={user} /> :
+        user ? (
+          user.role === 'company' ?
+            <CompanyDashboard key="dashboard" user={user} setCurrentPage={setCurrentPage} setUser={setUser} jobs={jobs} setJobs={setJobs} /> :
+            <UserDashboard key="dashboard" user={user} setCurrentPage={setCurrentPage} setUser={setUser} />
+        ) :
         <AuthPage key="register" currentPage={currentPage} setCurrentPage={setCurrentPage} setUser={setUser} />
       )}
       {currentPage === 'forgot-password' && (

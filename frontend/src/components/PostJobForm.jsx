@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, X, Sparkles, Plus, Trash2 } from 'lucide-react';
 import { buttonHover } from '../utils/animations';
 
-export const PostJobForm = ({ setShowPostForm, onAddJob }) => {
+export const PostJobForm = ({ setShowPostForm, onAddJob, editingJob, onUpdateJob }) => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -19,17 +19,64 @@ export const PostJobForm = ({ setShowPostForm, onAddJob }) => {
     applicationDeadline: '',
   });
 
+  useEffect(() => {
+    if (editingJob) {
+      let salaryStr = '';
+      if (typeof editingJob.salary === 'string') {
+        salaryStr = editingJob.salary;
+      } else if (editingJob.salary && typeof editingJob.salary === 'object') {
+        salaryStr = `$${(editingJob.salary.min / 1000)}k - $${(editingJob.salary.max / 1000)}k`;
+      }
+
+      setFormData({
+        title: editingJob.title || '',
+        description: editingJob.description || '',
+        salary: salaryStr || '',
+        location: editingJob.location || '',
+        jobType: editingJob.type || editingJob.jobType || 'Full-time',
+        workMode: editingJob.workMode || 'Hybrid',
+        experience: editingJob.level === 'Mid-level' ? 'Mid' : (editingJob.experience || 'Mid'),
+        category: editingJob.category || 'Engineering',
+        skills: Array.isArray(editingJob.skills) ? editingJob.skills.join(', ') : '',
+        requirements: Array.isArray(editingJob.requirements) ? editingJob.requirements.join(', ') : '',
+        benefits: Array.isArray(editingJob.benefits) ? editingJob.benefits.join(', ') : '',
+        applicationDeadline: editingJob.applicationDeadline ? new Date(editingJob.applicationDeadline).toISOString().split('T')[0] : '',
+      });
+    } else {
+      setFormData({
+        title: '',
+        description: '',
+        salary: '',
+        location: '',
+        jobType: 'Full-time',
+        workMode: 'Hybrid',
+        experience: 'Mid',
+        category: 'Engineering',
+        skills: '',
+        requirements: '',
+        benefits: '',
+        applicationDeadline: '',
+      });
+    }
+  }, [editingJob]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const set = (key) => (e) => setFormData(prev => ({ ...prev, [key]: e.target.value }));
 
   const handlePublish = async (e) => {
     e.preventDefault();
-    if (!onAddJob) return;
     setIsSubmitting(true);
     try {
-      await onAddJob(formData);
-      window.alert('Requisition published successfully!');
+      if (editingJob) {
+        if (!onUpdateJob) return;
+        await onUpdateJob(editingJob.id || editingJob._id, formData);
+        window.alert('Requisition updated successfully!');
+      } else {
+        if (!onAddJob) return;
+        await onAddJob(formData);
+        window.alert('Requisition published successfully!');
+      }
       setShowPostForm(false);
     } catch (err) {
       console.error('PostJobForm submission error:', err);
@@ -54,9 +101,11 @@ export const PostJobForm = ({ setShowPostForm, onAddJob }) => {
         <div>
           <h3 className="text-lg font-bold text-slate-900 flex items-center gap-1.5">
             <Sparkles className="w-5 h-5 text-blue-500" />
-            Create Job Requisition
+            {editingJob ? 'Edit Job Requisition' : 'Create Job Requisition'}
           </h3>
-          <p className="text-slate-400 text-xs mt-0.5">Fill all fields to publish your vacancy in the HireWave network</p>
+          <p className="text-slate-400 text-xs mt-0.5">
+            {editingJob ? 'Modify vacancy details and propagate changes across the network' : 'Fill all fields to publish your vacancy in the HireWave network'}
+          </p>
         </div>
         <button
           type="button"
@@ -218,12 +267,12 @@ export const PostJobForm = ({ setShowPostForm, onAddJob }) => {
             {isSubmitting ? (
               <>
                 <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Publishing...
+                {editingJob ? 'Saving...' : 'Publishing...'}
               </>
             ) : (
               <>
                 <CheckCircle className="w-3.5 h-3.5" />
-                Publish Requisition
+                {editingJob ? 'Save Changes' : 'Publish Requisition'}
               </>
             )}
           </motion.button>

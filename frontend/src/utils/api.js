@@ -107,7 +107,7 @@ export const api = {
         location: job.location,
         salary: job.salary ? `$${(job.salary.min / 1000)}k - $${(job.salary.max / 1000)}k` : '$100k - $150k',
         type: job.jobType,
-        level: job.experience === 'Mid' ? 'Mid-level' : job.experience,
+        level: job.experience === 'Mid-level' ? 'Mid-level' : job.experience,
         description: job.description,
         skills: job.skills || [],
         benefits: job.benefits || [],
@@ -119,6 +119,7 @@ export const api = {
         category: job.category || 'Engineering',
         workMode: job.workMode,
         applicationDeadline: job.applicationDeadline,
+        recruiter: job.recruiter,
       }));
     },
 
@@ -132,7 +133,7 @@ export const api = {
         location: job.location,
         salary: job.salary ? `$${(job.salary.min / 1000)}k - $${(job.salary.max / 1000)}k` : '$100k - $150k',
         type: job.jobType,
-        level: job.experience === 'Mid' ? 'Mid-level' : job.experience,
+        level: job.experience === 'Mid-level' ? 'Mid-level' : job.experience,
         description: job.description,
         skills: job.skills || [],
         benefits: job.benefits || [],
@@ -146,6 +147,7 @@ export const api = {
         isActive: job.isActive,
         applicationDeadline: job.applicationDeadline,
         _rawId: job._id,
+        recruiter: job.recruiter,
       }));
     },
 
@@ -200,6 +202,62 @@ export const api = {
         body: JSON.stringify(body),
       });
       return data.data;
+    },
+
+    update: async (jobId, jobData) => {
+      let minSalary = 100000;
+      let maxSalary = 150000;
+      try {
+        const matches = jobData.salary.match(/\d+[\d,k]*/g);
+        if (matches && matches.length >= 2) {
+          const parseSalary = (str) => {
+            let clean = str.replace(/,/g, '').toLowerCase();
+            if (clean.endsWith('k')) return parseInt(clean) * 1000;
+            return parseInt(clean);
+          };
+          minSalary = parseSalary(matches[0]);
+          maxSalary = parseSalary(matches[1]);
+        }
+      } catch (e) {
+        console.error('Salary parsing error:', e);
+      }
+
+      const skillsArray = jobData.skills
+        ? (typeof jobData.skills === 'string' ? jobData.skills.split(',').map(s => s.trim()).filter(Boolean) : jobData.skills)
+        : ['React', 'TypeScript', 'Node.js'];
+
+      const benefitsArray = jobData.benefits
+        ? (typeof jobData.benefits === 'string' ? jobData.benefits.split(',').map(b => b.trim()).filter(Boolean) : jobData.benefits)
+        : [];
+
+      const requirementsArray = jobData.requirements
+        ? (typeof jobData.requirements === 'string' ? jobData.requirements.split(',').map(r => r.trim()).filter(Boolean) : jobData.requirements)
+        : [];
+
+      const body = {
+        title: jobData.title,
+        description: jobData.description,
+        location: jobData.location,
+        jobType: jobData.jobType || 'Full-time',
+        experience: jobData.experience || 'Mid',
+        salary: { min: minSalary, max: maxSalary },
+        skills: skillsArray,
+        benefits: benefitsArray,
+        requirements: requirementsArray,
+        category: jobData.category || 'Engineering',
+        workMode: jobData.workMode || 'Hybrid',
+        applicationDeadline: jobData.applicationDeadline || undefined,
+      };
+
+      const data = await request(`/jobs/${jobId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      return data.data;
+    },
+
+    delete: async (jobId) => {
+      return await request(`/jobs/${jobId}`, { method: 'DELETE' });
     }
   },
 
@@ -216,10 +274,10 @@ export const api = {
       return await request('/applications/recruiter/applicants');
     },
 
-    updateStatus: async (applicationId, status) => {
+    updateStatus: async (applicationId, status, notes = '', reason = '') => {
       return await request(`/applications/${applicationId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, recruiterNotes: notes, rejectionReason: reason }),
       });
     }
   },
@@ -236,6 +294,18 @@ export const api = {
         method: 'PATCH',
         body: JSON.stringify(companyData),
       });
+    }
+  },
+
+  notifications: {
+    getAll: async () => {
+      return await request('/notifications');
+    },
+    markRead: async (id) => {
+      return await request(`/notifications/${id}/read`, { method: 'PATCH' });
+    },
+    markAllRead: async () => {
+      return await request('/notifications/read-all', { method: 'PATCH' });
     }
   }
 };

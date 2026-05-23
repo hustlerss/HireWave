@@ -1,7 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate, asyncHandler, AppError } from '../middleware/errorHandler.js';
-import { Job, Application, Company } from '../models/index.js';
+import { Job, Application, Company, Notification } from '../models/index.js';
 import User from '../models/User.js';
 
 // ─── User Routes ────────────────────────────────────────────────────────────
@@ -60,13 +60,13 @@ applicationRouter.patch('/:applicationId/status', authenticate, asyncHandler(asy
     throw new AppError('Only recruiters can update application status', 403);
   }
 
-  const { status } = req.body;
+  const { status, recruiterNotes, rejectionReason } = req.body;
   const validStatuses = ['pending', 'reviewed', 'shortlisted', 'rejected', 'accepted'];
   if (!validStatuses.includes(status)) {
     throw new AppError(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, 400);
   }
 
-  const application = await Application.findById(req.params.applicationId).populate('job', 'recruiter');
+  const application = await Application.findById(req.params.applicationId).populate('job', 'recruiter title');
   if (!application) throw new AppError('Application not found', 404);
 
   if (application.job.recruiter.toString() !== req.user._id.toString()) {
@@ -74,8 +74,29 @@ applicationRouter.patch('/:applicationId/status', authenticate, asyncHandler(asy
   }
 
   application.status = status;
+  if (recruiterNotes !== undefined) application.recruiterNotes = recruiterNotes;
+  if (rejectionReason !== undefined) application.rejectionReason = rejectionReason;
   application.reviewedAt = new Date();
   await application.save();
+
+  // Trigger candidate notification
+  try {
+    let customMsg = `Your application for ${application.job.title || 'the job'} has been marked as ${status}.`;
+    if (status === 'rejected' && rejectionReason) {
+      customMsg += ` Reason: ${rejectionReason}`;
+    } else if (recruiterNotes) {
+      customMsg += ` Note: "${recruiterNotes}"`;
+    }
+    await Notification.create({
+      recipient: application.candidate,
+      type: 'application',
+      title: status === 'shortlisted' ? 'Application Shortlisted 🎉' : status === 'accepted' ? 'Offer Received! 🎊' : 'Application Update',
+      message: customMsg,
+      data: { applicationId: application._id }
+    });
+  } catch (err) {
+    console.error('Failed to create candidate notification:', err.message);
+  }
 
   res.json({ success: true, data: application, message: `Application marked as ${status}` });
 }));
@@ -108,6 +129,19 @@ applicationRouter.post('/:jobId/apply', authenticate, asyncHandler(async (req, r
   const application = await Application.create({ job: jobId, candidate: candidateId, status: 'pending' });
   await Job.findByIdAndUpdate(jobId, { $addToSet: { applicants: application._id } });
   await User.findByIdAndUpdate(candidateId, { $addToSet: { appliedJobs: jobId } });
+
+  // Trigger recruiter notification
+  try {
+    await Notification.create({
+      recipient: job.recruiter,
+      type: 'application',
+      title: 'New Application',
+      message: `${req.user.name} applied for your job listing: ${job.title}`,
+      data: { jobId, applicationId: application._id }
+    });
+  } catch (err) {
+    console.error('Failed to create recruiter notification:', err.message);
+  }
 
   res.status(201).json({ success: true, message: 'Application submitted successfully!', data: application });
 }));
@@ -190,4 +224,41 @@ adminRouter.get('/analytics', authenticate, asyncHandler(async (req, res) => {
   res.json({ success: true, data: {} });
 }));
 
-export { userRouter as userRoutes, applicationRouter as applicationRoutes, companyRouter as companyRoutes, adminRouter as adminRoutes };
+// ─── Notification Routes ──────────────────────────────────────────────────────
+const notificationRouter = express.Router();
+
+// GET /api/notifications — get all notifications
+notificationRouter.get('/', authenticate, asyncHandler(async (req, res) => {
+  const notifications = await Notification.find({ recipient: req.user._id })
+    .sort({ createdAt: -1 })
+    .limit(50);
+  res.json({ success: true, data: notifications });
+}));
+
+// PATCH /api/notifications/:id/read — mark as read
+notificationRouter.patch('/:id/read', authenticate, asyncHandler(async (req, res) => {
+  const notification = await Notification.findOneAndUpdate(
+    { _id: req.params.id, recipient: req.user._id },
+    { isRead: true, readAt: new Date() },
+    { new: true }
+  );
+  if (!notification) throw new AppError('Notification not found', 404);
+  res.json({ success: true, data: notification });
+}));
+
+// PATCH /api/notifications/read-all — mark all as read
+notificationRouter.patch('/read-all', authenticate, asyncHandler(async (req, res) => {
+  await Notification.updateMany(
+    { recipient: req.user._id, isRead: false },
+    { isRead: true, readAt: new Date() }
+  );
+  res.json({ success: true, message: 'All notifications marked as read' });
+}));
+
+export { 
+  userRouter as userRoutes, 
+  applicationRouter as applicationRoutes, 
+  companyRouter as companyRoutes, 
+  adminRouter as adminRoutes,
+  notificationRouter as notificationRoutes 
+};

@@ -7,6 +7,8 @@ import { api } from '../utils/api';
 export const Navbar = ({ currentPage, setCurrentPage, user, setUser }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -19,6 +21,41 @@ export const Navbar = ({ currentPage, setCurrentPage, user, setUser }) => {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 20000); // poll every 20s
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.notifications.getAll();
+      if (res.success) setNotifications(res.data || []);
+    } catch (err) {
+      console.warn('Failed to fetch notifications:', err.message);
+    }
+  };
+
+  const handleMarkRead = async (id) => {
+    try {
+      await api.notifications.markRead(id);
+      setNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await api.notifications.markAllRead();
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const navLinks = [
     { id: 'home', label: 'Home' },
@@ -77,9 +114,80 @@ export const Navbar = ({ currentPage, setCurrentPage, user, setUser }) => {
         <div className="hidden md:flex items-center gap-4">
           {user ? (
             <div className="flex items-center gap-5">
-              <div className="relative cursor-pointer p-1.5 hover:bg-slate-100 rounded-full transition-colors duration-200">
-                <Bell className="w-5 h-5 text-slate-600 hover:text-blue-600" />
-                <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-indigo-500 border-2 border-white rounded-full"></span>
+              <div className="relative">
+                <div 
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="relative cursor-pointer p-1.5 hover:bg-slate-100 rounded-full transition-colors duration-200"
+                >
+                  <Bell className="w-5 h-5 text-slate-600 hover:text-blue-600" />
+                  {notifications.filter(n => !n.isRead).length > 0 && (
+                    <span className="absolute top-1 right-1 w-4 h-4 bg-indigo-500 text-white border border-white rounded-full text-[9px] flex items-center justify-center font-bold">
+                      {notifications.filter(n => !n.isRead).length}
+                    </span>
+                  )}
+                </div>
+
+                <AnimatePresence>
+                  {showNotifications && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="absolute right-0 mt-3 w-80 bg-white/95 backdrop-blur-xl border border-slate-200/60 rounded-2xl shadow-xl shadow-slate-200/50 p-4 z-50 max-h-[400px] overflow-y-auto"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
+                        <span className="font-bold text-slate-800 text-xs sm:text-sm">Notifications</span>
+                        {notifications.filter(n => !n.isRead).length > 0 && (
+                          <button 
+                            onClick={handleMarkAllRead}
+                            className="text-[10px] font-bold text-blue-600 hover:text-blue-700 transition"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                      </div>
+
+                      {notifications.length > 0 ? (
+                        <div className="space-y-2">
+                          {notifications.map(n => (
+                            <div 
+                              key={n._id}
+                              onClick={() => {
+                                handleMarkRead(n._id);
+                                if (n.data?.jobId || n.data?.applicationId) {
+                                  setCurrentPage('dashboard');
+                                }
+                                setShowNotifications(false);
+                              }}
+                              className={`p-2.5 rounded-xl border text-left cursor-pointer transition duration-200 ${
+                                n.isRead 
+                                  ? 'bg-slate-50/50 border-slate-100/50 text-slate-500' 
+                                  : 'bg-indigo-500/5 border-indigo-500/10 hover:bg-indigo-500/10 text-slate-800'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start gap-1">
+                                <span className={`font-bold text-xs ${n.isRead ? 'text-slate-600' : 'text-slate-800'}`}>
+                                  {n.title}
+                                </span>
+                                {!n.isRead && (
+                                  <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0 mt-1" />
+                                )}
+                              </div>
+                              <p className="text-[10px] leading-normal mt-0.5">{n.message}</p>
+                              <span className="text-[8px] text-slate-400 font-semibold block mt-1">
+                                {new Date(n.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-slate-400 text-xs">
+                          No notifications yet
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
               
               <div 

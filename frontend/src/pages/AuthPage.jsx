@@ -36,15 +36,15 @@ export const AuthPage = ({ currentPage, setCurrentPage, setUser }) => {
         const res = await api.auth.login(email, password);
         if (res.success && res.user) {
           setUser(res.user);
-          // Company/recruiter users go straight to their dashboard
-          setCurrentPage(res.user.role === 'company' ? 'dashboard' : 'home');
+          // All users go to dashboard — App.jsx renders the correct dashboard based on role
+          setCurrentPage('dashboard');
         }
       } else if (currentPage === 'register' && step === 2) {
         const res = await api.auth.register(name, email, password, role);
         if (res.success && res.user) {
           setUser(res.user);
-          // Company/recruiter users go straight to their dashboard
-          setCurrentPage(res.user.role === 'company' ? 'dashboard' : 'home');
+          // All users go to dashboard — App.jsx renders the correct dashboard based on role
+          setCurrentPage('dashboard');
         }
       }
     } catch (err) {
@@ -159,6 +159,9 @@ export const AuthPage = ({ currentPage, setCurrentPage, setUser }) => {
                   {error && (
                     <div className="p-3 bg-red-500/10 text-red-600 border border-red-500/20 rounded-xl text-xs font-bold leading-normal mb-2">
                       ⚠️ {error}
+                      {error.toLowerCase().includes('invalid') && (
+                        <span className="block mt-1 font-normal text-red-500/80">Double-check your email and password, or <button type="button" onClick={() => setCurrentPage('register')} className="underline font-bold">create a new account</button>.</span>
+                      )}
                     </div>
                   )}
 
@@ -213,11 +216,19 @@ export const AuthPage = ({ currentPage, setCurrentPage, setUser }) => {
                   >
                     Enter Platform
                   </motion.button>
+
+                  {/* Role info note */}
+                  <div className="flex items-center gap-2 p-2.5 bg-slate-50/80 border border-slate-200/60 rounded-xl">
+                    <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <p className="text-[11px] text-slate-400 font-semibold leading-tight">
+                      Your role (Job Seeker or Recruiter) is automatically detected from your account.
+                    </p>
+                  </div>
                   
-                  <p className="text-center text-slate-500 text-xs font-semibold pt-4">
+                  <p className="text-center text-slate-500 text-xs font-semibold pt-2">
                     New to HireWave?{' '}
                     <button type="button" onClick={() => setCurrentPage('register')} className="text-blue-600 font-bold hover:underline">
-                      Create Seeker Account
+                      Create an Account
                     </button>
                   </p>
                 </motion.form>
@@ -243,6 +254,9 @@ export const AuthPage = ({ currentPage, setCurrentPage, setUser }) => {
                       {error && (
                         <div className="p-3 bg-red-500/10 text-red-600 border border-red-500/20 rounded-xl text-xs font-bold leading-normal mb-2">
                           ⚠️ {error}
+                          {(error.toLowerCase().includes('already exists') || error.toLowerCase().includes('already registered')) && (
+                            <span className="block mt-1 font-normal text-red-500/80">This email is already registered. <button type="button" onClick={() => { setCurrentPage('login'); setStep(1); setError(''); }} className="underline font-bold">Sign in instead</button>.</span>
+                          )}
                         </div>
                       )}
 
