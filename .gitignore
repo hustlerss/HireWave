@@ -1,0 +1,35 @@
+# Root level Node modules and dependency folders
+node_modules/
+**/node_modules/
+
+# Environment files
+.env
+**/.env
+**/*.env.local
+
+# OS files
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Production build artifacts
+dist/
+**/dist/
+build/
+**/build/
+
+# Logs
+*.log
+**/*.log
+
+# Editor folders
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+**/*.sw?

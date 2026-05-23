@@ -1,0 +1,46 @@
+services:
+  # 1. Express Backend Web Service
+  - type: web
+    name: hirewave-backend
+    runtime: node
+    repo: https://github.com/your-username/hirewave # Replace with your actual repository URL
+    plan: free # Deploys on Render's 100% Free Tier!
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: JWT_SECRET
+        sync: false # Prompts you to securely type a unique secret in Render UI
+      - key: MONGODB_URI
+        sync: false # Prompts you to securely paste your MongoDB Atlas URI
+      - key: CLIENT_URL
+        value: https://hirewave.onrender.com # Will update this to your live frontend URL
+
+  # 2. React Vite Frontend Static Site
+  - type: static
+    name: hirewave-frontend
+    runtime: web
+    repo: https://github.com/your-username/hirewave
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: max-age=31536000
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html # Crucial fallback for SPA React Routing to prevent 404s
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: hirewave-backend
+          property: host
+        value: https://${hirewave-backend.host}/api # Automatically binds backend URL!
